@@ -17,6 +17,8 @@
       rel="stylesheet"
     />
     <link rel="stylesheet" href="styles.css" />
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="supabase-config.js"></script>
     <script src="app.js" defer></script>
   </head>
   <body>
@@ -33,6 +35,7 @@
 
       <nav class="header-actions" aria-label="Course actions">
         <button class="text-button" id="resources-button" type="button">Resources</button>
+        <button class="text-button" id="account-button" type="button">Sign in</button>
         <div class="header-progress" id="header-progress" role="progressbar" aria-label="Course completion" aria-valuemin="0" aria-valuemax="6" aria-valuenow="0">
           <span id="header-progress-label">0 of 6 complete</span>
           <span class="mini-progress" aria-hidden="true"><span id="header-progress-bar"></span></span>
@@ -62,6 +65,38 @@
       <label class="search-label" for="resource-search">Search resources</label>
       <input class="search-input" id="resource-search" type="search" placeholder="Search by topic or source" />
       <div class="resource-list" id="resource-list"></div>
+    </dialog>
+
+    <dialog class="resource-dialog auth-dialog" id="auth-dialog" aria-labelledby="auth-dialog-title">
+      <div class="dialog-header">
+        <div>
+          <p class="eyebrow">Your learning account</p>
+          <h2 id="auth-dialog-title">Sign in to sync progress</h2>
+        </div>
+        <button class="icon-button" id="close-auth" type="button" aria-label="Close account dialog">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
+        </button>
+      </div>
+      <form class="auth-form" id="auth-form">
+          <p id="auth-status">Use a name and password. Your drafts, scores, and practicum work stay attached to this account.</p>
+        <label class="field-label" for="auth-name">Name</label>
+        <input class="name-input" id="auth-name" name="name" type="text" autocomplete="username" required minlength="3" maxlength="32" pattern="[A-Za-z0-9_-]+" placeholder="e.g. vivin" />
+        <label class="field-label" for="auth-password">Password</label>
+        <input class="name-input" id="auth-password" name="password" type="password" autocomplete="current-password" required minlength="8" placeholder="At least 8 characters" />
+        <div class="button-row">
+          <button class="primary-button" type="submit" data-auth-action="signin">Sign in</button>
+          <button class="secondary-button" type="submit" data-auth-action="signup">Create account</button>
+        </div>
+        <p class="auth-note">Names use letters, numbers, underscores, or hyphens. Passwords are never stored in the course database.</p>
+      </form>
+      <section class="account-summary" id="account-summary" hidden>
+        <p id="account-email"></p>
+        <p id="account-role"></p>
+        <div class="button-row">
+          <a class="primary-button" id="admin-dashboard-link" href="#admin" hidden>Open admin dashboard</a>
+          <button class="secondary-button" id="signout-button" type="button">Sign out</button>
+        </div>
+      </section>
     </dialog>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>

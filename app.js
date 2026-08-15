@@ -1,4 +1,5 @@
 const STORAGE_KEY = "gtm-academy-progress-v2";
+const SUPABASE_CONFIG = window.GTM_SUPABASE_CONFIG || {};
 
 const icons = {
   arrow: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6" /></svg>`,
@@ -560,6 +561,11 @@ const defaultState = {
 
 let state = loadState();
 let toastTimer;
+let supabaseClient = null;
+let activeUser = null;
+let currentProfile = null;
+let userIsAdmin = false;
+let syncTimer;
 
 function loadState() {
   try {
@@ -571,6 +577,12 @@ function loadState() {
 }
 
 function saveState() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  updateHeaderProgress();
+  queueCloudSync();
+}
+
+function saveLocalState() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   updateHeaderProgress();
 }
@@ -597,7 +609,9 @@ function showToast(message) {
 
 function route() {
   const hash = window.location.hash.replace(/^#/, "");
-  if (hash.startsWith("chapter-")) {
+  if (hash === "admin") {
+    renderAdminDashboard();
+  } else if (hash.startsWith("chapter-")) {
     const chapter = chapters.find((item) => `chapter-${item.id}` === hash);
     renderChapter(chapter || chapters[0]);
   } else {
@@ -606,6 +620,190 @@ function route() {
   updateHeaderProgress();
   window.scrollTo({ top: 0, behavior: "auto" });
   document.getElementById("main-content").focus({ preventScroll: true });
+}
+
+function isSupabaseConfigured() {
+  return Boolean(SUPABASE_CONFIG.url && SUPABASE_CONFIG.publishableKey && window.supabase);
+}
+
+async function initializeAuth() {
+  if (!isSupabaseConfigured()) {
+    updateAccountControl();
+    return;
+  }
+
+  supabaseClient = window.supabase.createClient(SUPABASE_CONFIG.url, SUPABASE_CONFIG.publishableKey, {
+    auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
+  });
+  const { data } = await supabaseClient.auth.getSession();
+  await setAuthSession(data.session);
+  supabaseClient.auth.onAuthStateChange((_event, session) => {
+    window.setTimeout(() => setAuthSession(session), 0);
+  });
+}
+
+async function setAuthSession(session) {
+  activeUser = session?.user || null;
+  currentProfile = null;
+  userIsAdmin = false;
+
+  if (activeUser && supabaseClient) {
+    const [{ data: profile }, { data: isAdmin }] = await Promise.all([
+      supabaseClient.from("learner_profiles").select("user_id, username").eq("user_id", activeUser.id).maybeSingle(),
+      supabaseClient.rpc("is_current_user_admin"),
+    ]);
+    currentProfile = profile;
+    userIsAdmin = Boolean(isAdmin);
+    await hydrateCloudProgress();
+  }
+
+  updateAccountControl();
+  if (window.location.hash === "#admin") route();
+}
+
+async function hydrateCloudProgress() {
+  const { data, error } = await supabaseClient
+    .from("learner_progress")
+    .select("state")
+    .eq("user_id", activeUser.id)
+    .maybeSingle();
+
+  if (error) {
+    showToast("Signed in, but progress could not load");
+    return;
+  }
+
+  if (data?.state && Object.keys(data.state).length) {
+    state = { ...defaultState, ...data.state };
+    saveLocalState();
+    route();
+    return;
+  }
+
+  queueCloudSync(true);
+}
+
+function queueCloudSync(immediate = false) {
+  if (!supabaseClient || !activeUser) return;
+  clearTimeout(syncTimer);
+  syncTimer = setTimeout(syncCloudProgress, immediate ? 0 : 700);
+}
+
+async function syncCloudProgress() {
+  if (!supabaseClient || !activeUser) return;
+  const { error } = await supabaseClient.from("learner_progress").upsert(
+    {
+      user_id: activeUser.id,
+      state,
+      completed_chapters: completedCount(),
+      chapter_scores: state.scores,
+      practicum_complete: isPracticumComplete(),
+    },
+    { onConflict: "user_id" },
+  );
+
+  if (error) {
+    console.warn("Progress sync failed", error.message);
+    return;
+  }
+
+}
+
+function updateAccountControl() {
+  const button = document.getElementById("account-button");
+  if (!button) return;
+  button.textContent = activeUser ? (userIsAdmin ? "Admin" : "Account") : "Sign in";
+  document.getElementById("auth-form").hidden = Boolean(activeUser);
+  document.getElementById("account-summary").hidden = !activeUser;
+  if (activeUser) {
+    document.getElementById("account-email").textContent = currentProfile?.username || "Signed in";
+    document.getElementById("account-role").textContent = userIsAdmin
+      ? "Administrator · learner progress is available in the dashboard."
+      : "Progress sync is on for this account.";
+    document.getElementById("admin-dashboard-link").hidden = !userIsAdmin;
+  }
+}
+
+async function handleAuthSubmit(event) {
+  event.preventDefault();
+  if (!isSupabaseConfigured()) {
+    document.getElementById("auth-status").textContent = "Account setup is still being connected. Please try again shortly.";
+    return;
+  }
+
+  const username = document.getElementById("auth-name").value.trim().toLowerCase();
+  const password = document.getElementById("auth-password").value;
+  const action = event.submitter?.dataset.authAction || "signin";
+  if (!/^[a-z0-9_-]{3,32}$/.test(username)) {
+    document.getElementById("auth-status").textContent = "Use 3–32 letters, numbers, underscores, or hyphens for your name.";
+    return;
+  }
+  const email = `${username}@users.gtm-academy.invalid`;
+  const result = action === "signup"
+    ? await supabaseClient.auth.signUp({ email, password, options: { data: { username } } })
+    : await supabaseClient.auth.signInWithPassword({ email, password });
+
+  if (result.error) {
+    document.getElementById("auth-status").textContent = result.error.message;
+    return;
+  }
+  document.getElementById("auth-status").textContent = action === "signup"
+    ? "Account created. You can now sign in with your name and password."
+    : "Signed in. Your progress is syncing.";
+  if (result.data.session) document.getElementById("auth-dialog").close();
+}
+
+async function signOut() {
+  if (supabaseClient) await supabaseClient.auth.signOut();
+  document.getElementById("auth-dialog").close();
+  showToast("Signed out. Local progress remains in this browser.");
+}
+
+async function renderAdminDashboard() {
+  const app = document.getElementById("app");
+  if (!activeUser) {
+    app.innerHTML = `<section class="home-section"><div class="empty-state">Sign in with an administrator account to view learner progress.</div></section>`;
+    return;
+  }
+  if (!userIsAdmin) {
+    app.innerHTML = `<section class="home-section"><div class="empty-state">This account can sync its own progress, but does not have administrator access.</div></section>`;
+    return;
+  }
+
+  app.innerHTML = `<section class="home-section"><div class="admin-loading">Loading learner progress…</div></section>`;
+  const [{ data: profiles, error: profileError }, { data: progress, error: progressError }] = await Promise.all([
+    supabaseClient.from("learner_profiles").select("user_id, username").order("created_at", { ascending: false }),
+    supabaseClient.from("learner_progress").select("user_id, completed_chapters, chapter_scores, practicum_complete, updated_at").order("updated_at", { ascending: false }),
+  ]);
+
+  if (profileError || progressError) {
+    app.innerHTML = `<section class="home-section"><div class="empty-state">Learner progress could not be loaded. Check the Supabase access policies, then refresh.</div></section>`;
+    return;
+  }
+
+  const progressByUser = new Map((progress || []).map((item) => [item.user_id, item]));
+  const learners = (profiles || []).map((profile) => ({ ...profile, progress: progressByUser.get(profile.user_id) }));
+  const complete = learners.filter((learner) => learner.progress?.completed_chapters === chapters.length).length;
+  const practicumReady = learners.filter((learner) => learner.progress?.practicum_complete).length;
+  app.innerHTML = `
+    <section class="admin-hero">
+      <div><p class="eyebrow">Administrator view</p><h1>Learner progress</h1><p>Live course progress for authenticated learners. Draft content stays private to the learner; this view reports completion only.</p></div>
+      <a class="secondary-button" href="#home">Back to course</a>
+    </section>
+    <section class="home-section admin-section">
+      <div class="admin-metrics">
+        <div><strong>${learners.length}</strong><span>learners</span></div>
+        <div><strong>${complete}</strong><span>all chapters passed</span></div>
+        <div><strong>${practicumReady}</strong><span>practicum complete</span></div>
+      </div>
+      <div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Learner</th><th>Chapters</th><th>Practicum</th><th>Last activity</th></tr></thead><tbody>
+        ${learners.length ? learners.map((learner) => {
+          const item = learner.progress;
+          return `<tr><td>${escapeHtml(learner.username || "Not provided")}</td><td>${item?.completed_chapters || 0} / ${chapters.length}</td><td>${item?.practicum_complete ? "Ready" : "In progress"}</td><td>${item?.updated_at ? new Date(item.updated_at).toLocaleString() : "Not started"}</td></tr>`;
+        }).join("") : `<tr><td colspan="4">No learner accounts yet.</td></tr>`}
+      </tbody></table></div>
+    </section>
+  `;
 }
 
 function renderHome() {
@@ -973,6 +1171,7 @@ function renderResources(filter = "") {
 
 function bindGlobalEvents() {
   const dialog = document.getElementById("resource-dialog");
+  const authDialog = document.getElementById("auth-dialog");
   document.getElementById("resources-button").addEventListener("click", () => {
     renderResources();
     dialog.showModal();
@@ -982,6 +1181,16 @@ function bindGlobalEvents() {
   document.getElementById("resource-search").addEventListener("input", (event) => renderResources(event.target.value));
   dialog.addEventListener("click", (event) => {
     if (event.target === dialog) dialog.close();
+  });
+  document.getElementById("account-button").addEventListener("click", () => {
+    updateAccountControl();
+    authDialog.showModal();
+  });
+  document.getElementById("close-auth").addEventListener("click", () => authDialog.close());
+  document.getElementById("auth-form").addEventListener("submit", handleAuthSubmit);
+  document.getElementById("signout-button").addEventListener("click", signOut);
+  authDialog.addEventListener("click", (event) => {
+    if (event.target === authDialog) authDialog.close();
   });
   document.addEventListener("click", (event) => {
     if (event.target.id === "reset-progress") {
@@ -1000,3 +1209,4 @@ function bindGlobalEvents() {
 bindGlobalEvents();
 window.addEventListener("hashchange", route);
 route();
+initializeAuth();

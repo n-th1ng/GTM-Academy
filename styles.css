@@ -974,6 +974,132 @@ button:disabled,
   box-shadow: 0 30px 80px rgba(10, 18, 36, 0.3);
 }
 
+.auth-dialog {
+  width: min(560px, calc(100% - 32px));
+}
+
+.auth-form,
+.account-summary {
+  display: grid;
+  gap: 12px;
+  padding: 26px;
+}
+
+.auth-form > p,
+.account-summary > p {
+  margin: 0 0 6px;
+  color: var(--muted);
+}
+
+.auth-note {
+  margin-top: 4px !important;
+  font-size: 13px;
+}
+
+.account-summary {
+  padding-top: 28px;
+}
+
+#account-email {
+  color: var(--ink);
+  font-weight: 700;
+}
+
+.admin-hero {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 32px;
+  padding: 58px max(20px, calc((100vw - var(--content-width)) / 2));
+  color: var(--white);
+  background: var(--navy-900);
+}
+
+.admin-hero h1 {
+  font-size: clamp(44px, 6vw, 72px);
+}
+
+.admin-hero p:not(.eyebrow) {
+  max-width: 650px;
+  margin: 18px 0 0;
+  color: #dce4f1;
+}
+
+.admin-section {
+  padding-top: 36px;
+}
+
+.admin-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  margin-bottom: 28px;
+}
+
+.admin-metrics > div {
+  padding: 20px;
+  background: var(--white);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+}
+
+.admin-metrics strong,
+.admin-metrics span {
+  display: block;
+}
+
+.admin-metrics strong {
+  color: var(--navy-900);
+  font-family: var(--font-display);
+  font-size: 42px;
+  line-height: 1;
+}
+
+.admin-metrics span {
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.admin-table-wrap {
+  overflow-x: auto;
+  background: var(--white);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+}
+
+.admin-table {
+  width: 100%;
+  min-width: 720px;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+.admin-table th,
+.admin-table td {
+  padding: 15px 18px;
+  border-bottom: 1px solid var(--border);
+}
+
+.admin-table th {
+  color: var(--muted);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.admin-table tr:last-child td {
+  border-bottom: 0;
+}
+
+.admin-loading {
+  padding: 32px;
+  color: var(--muted);
+  text-align: center;
+}
+
 .resource-dialog::backdrop {
   background: rgba(10, 18, 36, 0.66);
   backdrop-filter: blur(3px);
@@ -1168,6 +1294,16 @@ button:disabled,
 
   .mini-progress {
     width: 74px;
+  }
+
+  .admin-hero {
+    align-items: start;
+    flex-direction: column;
+    padding: 42px 18px;
+  }
+
+  .admin-metrics {
+    grid-template-columns: 1fr;
   }
 
   .hero-inner {
