@@ -738,7 +738,7 @@ async function handleAuthSubmit(event) {
     document.getElementById("auth-status").textContent = "Use 3–32 letters, numbers, underscores, or hyphens for your name.";
     return;
   }
-  const email = `${username}@users.gtm-academy.invalid`;
+  const email = `${username}@users.gtm-academy.example`;
   const result = action === "signup"
     ? await supabaseClient.auth.signUp({ email, password, options: { data: { username } } })
     : await supabaseClient.auth.signInWithPassword({ email, password });
